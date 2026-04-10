@@ -1,0 +1,67 @@
+# Built application files
+*.apk
+*.ap_
+*.aab
+
+# Files for the ART/Dalvik VM
+*.dex
+
+# Java class files
+*.class
+
+# Generated files
+bin/
+gen/
+out/
+
+# Gradle files
+.gradle/
+build/
+local.properties
+
+# IntelliJ IDEA
+*.iml
+.idea/
+*.ipr
+*.iws
+projectFilesBackup/
+
+# Keystore files
+*.jks
+*.keystore
+
+# External native build folder
+.externalNativeBuild
+
+# Freeline
+freeline.py
+freeline/
+freeline_project_description.json
+
+# fastlane
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots
+fastlane/test_output
+
+# Android navigation editor
+navigation/
+
+# Android Studio
+captures/
+.externalNativeBuild
+.gradle
+build
+
+# Kotlin code
+.kt
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# BMad workflow files (not needed in repo)
+.opencode/
+_bmad/
+_bmad-output/
+docs/
