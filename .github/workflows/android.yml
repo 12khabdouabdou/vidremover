@@ -20,28 +20,68 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
+      - name: Debug environment
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT"
+          echo "---"
+          ls -la /usr/local/lib/android/sdk 2>/dev/null || echo "SDK not at /usr/local/lib/android/sdk"
+          ls -la $HOME/android-sdk 2>/dev/null || echo "SDK not at $HOME/android-sdk"
+          which sdkmanager 2>/dev/null || echo "sdkmanager not in PATH"
+
       - name: Setup Android SDK
         run: |
-          # Use the existing Android SDK location from the runner
-          export ANDROID_HOME=/usr/local/lib/android/sdk
-          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          # Install Android SDK if needed
+          if [ -d "/usr/local/lib/android/sdk" ]; then
+            echo "Using existing Android SDK"
+            export ANDROID_HOME=/usr/local/lib/android/sdk
+          elif [ -d "$HOME/android-sdk" ]; then
+            echo "Using existing Android SDK in home"
+            export ANDROID_HOME=$HOME/android-sdk
+          else
+            echo "Installing Android SDK..."
+            export ANDROID_HOME=$HOME/android-sdk
+            mkdir -p $ANDROID_HOME
+            
+            # Download command line tools
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+            unzip -q /tmp/cmdline-tools.zip -d $ANDROID_HOME
+            mkdir -p $ANDROID_HOME/cmdline-tools/latest
+            mv $ANDROID_HOME/cmdline-tools/bin $ANDROID_HOME/cmdline-tools/lib $ANDROID_HOME/cmdline-tools/latest/ 2>/dev/null || true
+            rm -rf $ANDROID_HOME/cmdline-tools-temp
+          fi
           
-          # Update PATH
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
           echo "ANDROID_HOME=$ANDROID_HOME" >> $GITHUB_ENV
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
           echo "$ANDROID_HOME/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "$ANDROID_HOME/platform-tools" >> $GITHUB_PATH
 
+      - name: Accept licenses and install components
+        run: |
+          yes | sdkmanager --licenses || true
+          sdkmanager "platforms;android-34" "build-tools;34.0.0" "platform-tools"
+
       - name: Grant execute permission
         run: chmod +x gradlew
 
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
+          export ANDROID_SDK_ROOT=$ANDROID_HOME
+          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
 
       - name: List build directory
         run: |
-          ls -la app/build/outputs/apk/debug/ || echo "Debug directory not found"
+          ls -la app/build/outputs/apk/debug/ 2>/dev/null || echo "Debug directory not found"
           find app/build -name "*.apk" 2>/dev/null || echo "No APK files found"
+
+      - name: Upload build log
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
