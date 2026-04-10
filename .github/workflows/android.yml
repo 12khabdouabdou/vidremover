@@ -24,20 +24,13 @@ jobs:
       - name: Setup Android SDK
         uses: android-actions/setup-android@v2
 
-      - name: Verify SDK
-        run: |
-          echo "ANDROID_HOME: $ANDROID_HOME"
-          ls -la $ANDROID_HOME
-          echo "---"
-          echo "SDK versions:"
-          ls $ANDROID_HOME/platforms 2>/dev/null || echo "No platforms"
-          ls $ANDROID_HOME/build-tools 2>/dev/null || echo "No build-tools"
-
       - name: Build with Gradle
-        run: ./gradlew assembleDebug --no-daemon --info 2>&1 | tail -100
+        run: ./gradlew assembleDebug --no-daemon
+
+      - name: List build outputs
+        run: ls -la app/build/outputs/apk/debug/
 
       - name: Upload APK
-        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: vidremover-debug
