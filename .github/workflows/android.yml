@@ -69,23 +69,23 @@ jobs:
         run: |
           export ANDROID_HOME=${ANDROID_HOME:-/usr/local/lib/android/sdk}
           export ANDROID_SDK_ROOT=$ANDROID_HOME
-          ./gradlew assembleDebug --no-daemon --stacktrace 2>&1 | tee build.log
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: List build directory
+      - name: Find and verify APK
         run: |
-          ls -la app/build/outputs/apk/debug/ 2>/dev/null || echo "Debug directory not found"
-          find app/build -name "*.apk" 2>/dev/null || echo "No APK files found"
-
-      - name: Upload build log
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
+          echo "=== Looking for APK files ==="
+          find . -name "*.apk" -type f 2>/dev/null | head -20
+          echo "=== Checking specific directory ==="
+          ls -la app/build/outputs/apk/debug/ 2>/dev/null || echo "Directory not found"
+          echo "=== All outputs ==="
+          ls -laR app/build/outputs/ 2>/dev/null || echo "No outputs directory"
 
       - name: Upload APK
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: vidremover-debug
-          path: app/build/outputs/apk/debug/*.apk
+          path: |
+            app/build/outputs/apk/**/*.apk
+            **/*.apk
           if-no-files-found: warn
