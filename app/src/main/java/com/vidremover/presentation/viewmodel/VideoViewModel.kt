@@ -18,6 +18,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.security.MessageDigest
 import javax.inject.Inject
 
 @HiltViewModel
@@ -251,7 +252,7 @@ class VideoViewModel @Inject constructor(
                 }
             }
 
-            digest.digest().joinToString("") { "%02x".format(it) }
+            digest.digest().joinToString("") { byte -> "%02x".format(byte) }
         } catch (e: Exception) {
             video.id.toString()
         }
