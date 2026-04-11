@@ -17,7 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.vidremover.presentation.viewmodel.VideoViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -25,7 +25,7 @@ import com.vidremover.presentation.viewmodel.VideoViewModel
 fun ScanScreen(
     onNavigateBack: () -> Unit,
     onNavigateToReview: () -> Unit,
-    viewModel: VideoViewModel = viewModel()
+    viewModel: VideoViewModel = hiltViewModel()
 ) {
     val isScanning by viewModel.isScanning.collectAsState()
     val scanProgress by viewModel.scanProgress.collectAsState()

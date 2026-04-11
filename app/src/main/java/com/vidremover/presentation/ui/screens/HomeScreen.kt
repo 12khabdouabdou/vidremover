@@ -10,6 +10,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Folder
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -17,17 +18,17 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.hilt.navigation.compose.hiltViewModel
 import com.vidremover.domain.model.VideoFolder
 import com.vidremover.domain.usecase.DetectionMode
-import com.vidremover.presentation.viewmodel.VideoViewModel
+import com.vidremover.presentation.viewmodel.HomeViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HomeScreen(
     onNavigateToScan: () -> Unit,
-    onNavigateToReview: () -> Unit,
-    viewModel: VideoViewModel = viewModel()
+    onNavigateToSettings: () -> Unit = {},
+    viewModel: HomeViewModel = hiltViewModel()
 ) {
     val folders by viewModel.folders.collectAsState()
     val scanAll by viewModel.scanAll.collectAsState()
@@ -38,15 +39,39 @@ fun HomeScreen(
         viewModel.loadFolders()
     }
 
+    val error by viewModel.error.collectAsState()
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text("VidRemover") },
+                actions = {
+                    IconButton(onClick = onNavigateToSettings) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Settings",
+                            tint = MaterialTheme.colorScheme.onPrimary
+                        )
+                    }
+                },
                 colors = TopAppBarDefaults.topAppBarColors(
                     containerColor = MaterialTheme.colorScheme.primary,
                     titleContentColor = MaterialTheme.colorScheme.onPrimary
                 )
             )
+        },
+        snackbarHost = {
+            error?.let { errorMessage ->
+                Snackbar(
+                    action = {
+                        TextButton(onClick = { viewModel.clearError() }) {
+                            Text("Dismiss")
+                        }
+                    }
+                ) {
+                    Text(errorMessage)
+                }
+            }
         }
     ) { padding ->
         Column(

@@ -1,136 +1,59 @@
 package com.vidremover.data.repository
 
-import android.content.ContentResolver
-import android.content.ContentUris
-import android.content.Context
-import android.database.Cursor
 import android.net.Uri
-import android.os.Build
-import android.provider.MediaStore
+import com.vidremover.data.local.MediaStoreDataSource
+import com.vidremover.data.model.toDomain
 import com.vidremover.domain.model.Video
 import com.vidremover.domain.model.VideoFolder
+import com.vidremover.domain.usecase.ComputeMD5HashUseCase
+import com.vidremover.domain.usecase.ComputePHashUseCase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.File
-import java.security.MessageDigest
+import javax.inject.Inject
+import javax.inject.Singleton
 
-class VideoRepository(private val context: Context) {
+/**
+* Implementation of VideoRepository that delegates to MediaStoreDataSource.
+* Handles data access and business logic operations on videos.
+*
+* This repository uses constructor injection for its dependencies:
+* - [MediaStoreDataSource] for MediaStore queries
+* - [ComputeMD5HashUseCase] for MD5 hash computation
+* - [ComputePHashUseCase] for perceptual hash computation
+*
+* @property dataSource The data source for MediaStore operations
+* @property computeMD5HashUseCase Use case for computing MD5 hashes
+* @property computePHashUseCase Use case for computing perceptual hashes
+*/
+@Singleton
+class VideoRepository @Inject constructor(
+    private val dataSource: MediaStoreDataSource,
+    private val computeMD5HashUseCase: ComputeMD5HashUseCase,
+    private val computePHashUseCase: ComputePHashUseCase
+) : com.vidremover.domain.repository.VideoRepository {
 
-    private val contentResolver: ContentResolver = context.contentResolver
-
-    suspend fun getAllVideos(): List<Video> = withContext(Dispatchers.IO) {
-        val videos = mutableListOf<Video>()
-        
-        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            MediaStore.Video.Media.getContentUri(MediaStore.VOLUME_EXTERNAL)
-        } else {
-            MediaStore.Video.Media.EXTERNAL_CONTENT_URI
-        }
-
-        val projection = arrayOf(
-            MediaStore.Video.Media._ID,
-            MediaStore.Video.Media.DISPLAY_NAME,
-            MediaStore.Video.Media.DATA,
-            MediaStore.Video.Media.SIZE,
-            MediaStore.Video.Media.DURATION,
-            MediaStore.Video.Media.DATE_ADDED,
-            MediaStore.Video.Media.MIME_TYPE,
-            MediaStore.Video.Media.BUCKET_DISPLAY_NAME,
-            MediaStore.Video.Media.BUCKET_ID
-        )
-
-        val sortOrder = "${MediaStore.Video.Media.DATE_ADDED} DESC"
-
-        contentResolver.query(
-            collection,
-            projection,
-            null,
-            null,
-            sortOrder
-        )?.use { cursor ->
-            val idColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media._ID)
-            val nameColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DISPLAY_NAME)
-            val pathColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATA)
-            val sizeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
-            val durationColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
-            val dateColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_ADDED)
-            val mimeColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.MIME_TYPE)
-            val bucketColumn = cursor.getColumnIndexOrThrow(MediaStore.Video.Media.BUCKET_DISPLAY_NAME)
-
-            while (cursor.moveToNext()) {
-                val id = cursor.getLong(idColumn)
-                val name = cursor.getString(nameColumn) ?: "Unknown"
-                val path = cursor.getString(pathColumn) ?: ""
-                val size = cursor.getLong(sizeColumn)
-                val duration = cursor.getLong(durationColumn)
-                val dateAdded = cursor.getLong(dateColumn)
-                val mimeType = cursor.getString(mimeColumn) ?: "video/*"
-                val folderName = cursor.getString(bucketColumn) ?: "Unknown"
-
-                val contentUri = ContentUris.withAppendedId(
-                    MediaStore.Video.Media.EXTERNAL_CONTENT_URI,
-                    id
-                )
-
-                videos.add(
-                    Video(
-                        id = id,
-                        uri = contentUri.toString(),
-                        name = name,
-                        path = path,
-                        size = size,
-                        duration = duration,
-                        dateAdded = dateAdded,
-                        mimeType = mimeType,
-                        folderName = folderName
-                    )
-                )
-            }
-        }
-
-        videos
+    override suspend fun getAllVideos(): List<Video> = withContext(Dispatchers.IO) {
+        dataSource.queryVideos().map { it.toDomain() }
     }
 
-    suspend fun getVideosFromFolders(folders: List<String>): List<Video> = withContext(Dispatchers.IO) {
-        val allVideos = getAllVideos()
-        if (folders.isEmpty()) return@withContext allVideos
-        
-        allVideos.filter { video ->
-            folders.any { folder -> video.path.startsWith(folder) }
-        }
+    override suspend fun getVideosFromFolders(folders: List<String>): List<Video> = withContext(Dispatchers.IO) {
+        dataSource.queryVideosFromFolders(folders).map { it.toDomain() }
     }
 
-    suspend fun getFolders(): List<VideoFolder> = withContext(Dispatchers.IO) {
-        val folderMap = mutableMapOf<String, MutableList<Video>>()
-
-        val videos = getAllVideos()
-        videos.forEach { video ->
-            val folderPath = video.path.substringBeforeLast("/")
-            if (!folderMap.containsKey(folderPath)) {
-                folderMap[folderPath] = mutableListOf()
-            }
-            folderMap[folderPath]?.add(video)
-        }
-
-        folderMap.map { (path, videos) ->
-            VideoFolder(
-                name = videos.first().folderName,
-                path = path,
-                videoCount = videos.size
-            )
-        }.sortedByDescending { it.videoCount }
+    override suspend fun getFolders(): List<VideoFolder> = withContext(Dispatchers.IO) {
+        dataSource.queryFolders().map { it.toDomain() }
     }
 
-    suspend fun deleteVideo(video: Video): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun deleteVideo(video: Video): Boolean = withContext(Dispatchers.IO) {
         try {
             val uri = Uri.parse(video.uri)
-            contentResolver.delete(uri, null, null) > 0
+            dataSource.deleteVideo(uri)
         } catch (e: Exception) {
             false
         }
     }
 
-    fun formatFileSize(size: Long): String {
+    override fun formatFileSize(size: Long): String {
         return when {
             size < 1024 -> "$size B"
             size < 1024 * 1024 -> "${size / 1024} KB"
@@ -139,7 +62,7 @@ class VideoRepository(private val context: Context) {
         }
     }
 
-    fun formatDuration(durationMs: Long): String {
+    override fun formatDuration(durationMs: Long): String {
         val seconds = (durationMs / 1000) % 60
         val minutes = (durationMs / (1000 * 60)) % 60
         val hours = durationMs / (1000 * 60 * 60)
@@ -151,73 +74,13 @@ class VideoRepository(private val context: Context) {
         }
     }
 
-    suspend fun computeMD5Hash(video: Video): String = withContext(Dispatchers.IO) {
-        try {
-            val file = java.io.File(video.path)
-            if (!file.exists()) return@withContext video.id.toString()
+override suspend fun computeMD5Hash(video: Video): String =
+    computeMD5HashUseCase(video)
 
-            val digest = MessageDigest.getInstance("MD5")
-            val fileSize = file.length()
-            val sampleSize = minOf(1024 * 1024, fileSize).toInt()
-            val sampleStep = maxOf(1, (fileSize / sampleSize).toInt())
+override suspend fun computePHash(video: Video): String =
+    computePHashUseCase(video)
 
-            java.io.RandomAccessFile(file, "r").use { raf ->
-                var bytesRead = 0L
-                val buffer = ByteArray(8192)
-                
-                while (bytesRead < fileSize && bytesRead < sampleSize * 10) {
-                    raf.seek(bytesRead)
-                    val read = raf.read(buffer)
-                    if (read > 0) {
-                        digest.update(buffer, 0, minOf(read, sampleSize - (bytesRead.toInt())))
-                    }
-                    bytesRead += sampleStep
-                }
-            }
-
-            digest.digest().joinToString("") { byte -> "%02x".format(byte) }
-        } catch (e: Exception) {
-            video.id.toString()
-        }
-    }
-
-    suspend fun computepHash(video: Video): String = withContext(Dispatchers.IO) {
-        try {
-            val file = java.io.File(video.path)
-            if (!file.exists()) return@withContext video.id.toString()
-
-            val digest = MessageDigest.getInstance("MD5")
-            val fileSize = file.length()
-            
-            // Sample more bytes for perceptual hash
-            val sampleSize = minOf(2 * 1024 * 1024, fileSize).toInt()
-            val sampleStep = maxOf(1, (fileSize / sampleSize).toInt())
-
-            java.io.RandomAccessFile(file, "r").use { raf ->
-                var bytesRead = 0L
-                val buffer = ByteArray(8192)
-                val samples = mutableListOf<Byte>()
-                
-                while (bytesRead < fileSize && bytesRead < sampleSize * 10) {
-                    raf.seek(bytesRead)
-                    val read = raf.read(buffer)
-                    if (read > 0) {
-                        digest.update(buffer, 0, read)
-                        samples.add(buffer[0])
-                        samples.add(buffer[minOf(read - 1, 8191)])
-                    }
-                    bytesRead += sampleStep
-                }
-            }
-
-            val hash = digest.digest()
-            hash.joinToString("") { "%02x".format(it) }
-        } catch (e: Exception) {
-            video.id.toString()
-        }
-    }
-
-    suspend fun getStorageFreedBytes(): Long = withContext(Dispatchers.IO) {
+    override suspend fun getStorageFreedBytes(): Long = withContext(Dispatchers.IO) {
         // Calculate storage freed - this is a simplified version
         // In production, you'd track deleted video sizes
         0L

@@ -37,8 +37,8 @@ import androidx.navigation.compose.rememberNavController
 import com.vidremover.presentation.ui.screens.HomeScreen
 import com.vidremover.presentation.ui.screens.ReviewScreen
 import com.vidremover.presentation.ui.screens.ScanScreen
+import com.vidremover.presentation.ui.screens.SettingsScreen
 import com.vidremover.presentation.ui.theme.VidRemoverTheme
-import com.vidremover.presentation.viewmodel.VideoViewModel
 
 class MainActivity : ComponentActivity() {
 
@@ -95,7 +95,6 @@ class MainActivity : ComponentActivity() {
 @Composable
 fun MainNavigation() {
     val navController = rememberNavController()
-    val viewModel: VideoViewModel = viewModel()
 
     NavHost(
         navController = navController,
@@ -104,27 +103,30 @@ fun MainNavigation() {
         composable("home") {
             HomeScreen(
                 onNavigateToScan = { navController.navigate("scan") },
-                onNavigateToReview = { navController.navigate("review") },
-                viewModel = viewModel
+                onNavigateToSettings = { navController.navigate("settings") }
             )
         }
 
         composable("scan") {
             ScanScreen(
                 onNavigateBack = { navController.popBackStack() },
-                onNavigateToReview = { 
+                onNavigateToReview = {
                     navController.navigate("review") {
                         popUpTo("home")
                     }
-                },
-                viewModel = viewModel
+                }
             )
         }
 
         composable("review") {
             ReviewScreen(
-                onNavigateBack = { navController.popBackStack() },
-                viewModel = viewModel
+                onNavigateBack = { navController.popBackStack() }
+            )
+        }
+
+        composable("settings") {
+            SettingsScreen(
+                onNavigateBack = { navController.popBackStack() }
             )
         }
     }
