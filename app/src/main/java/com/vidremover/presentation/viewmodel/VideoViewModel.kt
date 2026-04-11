@@ -3,14 +3,15 @@ package com.vidremover.presentation.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.vidremover.domain.model.DuplicateGroup
+import com.vidremover.domain.model.Image
 import com.vidremover.domain.model.ScanProgress
 import com.vidremover.domain.model.Video
 import com.vidremover.domain.model.VideoFolder
-import com.vidremover.domain.repository.VideoRepository
+import com.vidremover.domain.repository.MediaRepository
 import com.vidremover.domain.usecase.ComputeMD5HashUseCase
 import com.vidremover.domain.usecase.ComputePHashUseCase
-import com.vidremover.domain.usecase.DetectDuplicatesUseCase
 import com.vidremover.domain.usecase.DetectionMode
+import com.vidremover.domain.usecase.MediaType
 import dagger.hilt.android.lifecycle.HiltViewModel
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -23,15 +24,17 @@ import javax.inject.Inject
 
 @HiltViewModel
 class VideoViewModel @Inject constructor(
-    private val repository: VideoRepository,
-    private val detectDuplicatesUseCase: DetectDuplicatesUseCase,
+    private val repository: MediaRepository,
     private val computeMD5HashUseCase: ComputeMD5HashUseCase,
     private val computePHashUseCase: ComputePHashUseCase,
     private val duplicateStateHolder: DuplicateStateHolder
 ) : ViewModel() {
 
-    private val _videos = MutableStateFlow<List<Video>>(emptyList())
-    val videos: StateFlow<List<Video>> = _videos.asStateFlow()
+    private val _videos = MutableStateFlow<List >(emptyList())
+    val videos: StateFlow<List > = _videos.asStateFlow()
+
+    private val _images = MutableStateFlow<List<Image>>(emptyList())
+    val images: StateFlow<List<Image>> = _images.asStateFlow()
 
     private val _folders = MutableStateFlow<List<VideoFolder>>(emptyList())
     val folders: StateFlow<List<VideoFolder>> = _folders.asStateFlow()
@@ -52,9 +55,9 @@ class VideoViewModel @Inject constructor(
     val scanAll: StateFlow<Boolean> = _scanAll.asStateFlow()
 
     val detectionMode: StateFlow<DetectionMode> = duplicateStateHolder.detectionMode
+    val mediaType: StateFlow<MediaType> = duplicateStateHolder.mediaType
 
     private val _pHashThreshold = MutableStateFlow(0.9f)
-    val pHashThreshold: StateFlow<Float> = _pHashThreshold.asStateFlow()
 
     private val _selectedVideos = MutableStateFlow<Set<Long>>(emptySet())
     val selectedVideos: StateFlow<Set<Long>> = _selectedVideos.asStateFlow()
@@ -88,28 +91,40 @@ class VideoViewModel @Inject constructor(
             _scanProgress.value = ScanProgress(0, 0, "", false)
             _duplicateGroups.value = emptyList()
 
-            val videoList = if (_scanAll.value) {
-                repository.getAllVideos()
-            } else {
-                repository.getVideosFromFolders(_selectedFolders.value.toList())
+            when (mediaType.value) {
+                MediaType.VIDEOS -> {
+                    val videoList = if (_scanAll.value) {
+                        repository.getAllVideos()
+                    } else {
+                        repository.getVideosFromFolders(_selectedFolders.value.toList())
+                    }
+                    _videos.value = videoList
+                    _scanProgress.value = ScanProgress(0, videoList.size, "Starting scan...", false)
+                    val duplicates = findVideoDuplicates(videoList, detectionMode.value) { current, total, file ->
+                        _scanProgress.value = ScanProgress(current, total, file, false)
+                    }
+                    _duplicateGroups.value = duplicates
+                    duplicateStateHolder.setDuplicateGroups(duplicates)
+                    _scanProgress.value = ScanProgress(videoList.size, videoList.size, "Complete!", true)
+                }
+                MediaType.IMAGES -> {
+                    val imageList = if (_scanAll.value) {
+                        repository.getAllImages()
+                    } else {
+                        repository.getImagesFromFolders(_selectedFolders.value.toList())
+                    }
+                    _images.value = imageList
+                    _scanProgress.value = ScanProgress(0, imageList.size, "Starting scan...", false)
+                    val duplicates = findImageDuplicates(imageList, detectionMode.value) { current, total, file ->
+                        _scanProgress.value = ScanProgress(current, total, file, false)
+                    }
+                    _duplicateGroups.value = duplicates
+                    duplicateStateHolder.setDuplicateGroups(duplicates)
+                    _scanProgress.value = ScanProgress(imageList.size, imageList.size, "Complete!", true)
+                }
             }
-
-            _videos.value = videoList
-            _scanProgress.value = ScanProgress(0, videoList.size, "Starting scan...", false)
-
-            val duplicates = findDuplicates(videoList, detectionMode.value) { current, total, file ->
-                _scanProgress.value = ScanProgress(current, total, file, false)
-            }
-
-        _duplicateGroups.value = duplicates
-        duplicateStateHolder.setDuplicateGroups(duplicates)
-        _scanProgress.value = ScanProgress(videoList.size, videoList.size, "Complete!", true)
             _isScanning.value = false
-    }
-}
-
-    fun setpHashThreshold(threshold: Float) {
-        _pHashThreshold.value = threshold
+        }
     }
 
     fun toggleVideoSelection(videoId: Long) {
@@ -131,32 +146,30 @@ class VideoViewModel @Inject constructor(
         _selectedVideos.value = emptySet()
     }
 
-    private suspend fun findDuplicates(
-        videos: List<Video>,
+    private suspend fun findVideoDuplicates(
+        videos: List ,
         mode: DetectionMode,
         onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
         when (mode) {
-            DetectionMode.MD5_ONLY -> findMD5Duplicates(videos, onProgress)
-            DetectionMode.PHASH_ONLY -> findpHashDuplicates(videos, onProgress)
-            DetectionMode.BOTH -> findBothDuplicates(videos, onProgress)
+            DetectionMode.MD5_ONLY -> findVideoMD5Duplicates(videos, onProgress)
+            DetectionMode.PHASH_ONLY -> findVideopHashDuplicates(videos, onProgress)
+            DetectionMode.BOTH -> findVideoBothDuplicates(videos, onProgress)
         }
     }
 
-    private suspend fun findMD5Duplicates(
-        videos: List<Video>,
+    private suspend fun findVideoMD5Duplicates(
+        videos: List ,
         onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
-        val groups = mutableMapOf<String, MutableList<Video>>()
+        val groups = mutableMapOf<String, MutableList >()
 
         videos.forEachIndexed { index, video ->
             onProgress(index, videos.size, video.name)
-
             try {
                 val hash = repository.computeMD5Hash(video)
                 groups.getOrPut(hash) { mutableListOf() }.add(video)
             } catch (e: Exception) {
-                // Skip unhashable videos
             }
         }
 
@@ -170,20 +183,18 @@ class VideoViewModel @Inject constructor(
             }
     }
 
-    private suspend fun findpHashDuplicates(
-        videos: List<Video>,
+    private suspend fun findVideopHashDuplicates(
+        videos: List ,
         onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
-        val groups = mutableMapOf<String, MutableList<Video>>()
+        val groups = mutableMapOf<String, MutableList >()
 
         videos.forEachIndexed { index, video ->
             onProgress(index, videos.size, video.name)
-
-        try {
-                    val hash = computePHashUseCase(video)
-                    groups.getOrPut(hash) { mutableListOf() }.add(video)
+            try {
+                val hash = computePHashUseCase(video)
+                groups.getOrPut(hash) { mutableListOf() }.add(video)
             } catch (e: Exception) {
-                // Skip unhashable videos
             }
         }
 
@@ -197,17 +208,13 @@ class VideoViewModel @Inject constructor(
             }
     }
 
-    private suspend fun findBothDuplicates(
-        videos: List<Video>,
+    private suspend fun findVideoBothDuplicates(
+        videos: List ,
         onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
-        // First find MD5 duplicates
-        val md5Groups = findMD5Duplicates(videos, onProgress).associateBy { it.id }
-        
-        // Then find pHash duplicates
-        val pHashGroups = findpHashDuplicates(videos, onProgress).associateBy { it.id }
-        
-        // Combine groups
+        val md5Groups = findVideoMD5Duplicates(videos, onProgress).associateBy { it.id }
+        val pHashGroups = findVideopHashDuplicates(videos, onProgress).associateBy { it.id }
+
         val allGroups = (md5Groups.values + pHashGroups.values)
             .flatMap { it.videos }
             .groupBy { it.id }
@@ -220,38 +227,121 @@ class VideoViewModel @Inject constructor(
                 )
             }
             .filter { it.videos.size > 1 }
-        
+
         allGroups
     }
 
-    private fun computeVideoHash(video: Video): String {
+    private suspend fun findImageDuplicates(
+        images: List<Image>,
+        mode: DetectionMode,
+        onProgress: (Int, Int, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        when (mode) {
+            DetectionMode.MD5_ONLY -> findImageMD5Duplicates(images, onProgress)
+            DetectionMode.PHASH_ONLY -> findImagepHashDuplicates(images, onProgress)
+            DetectionMode.BOTH -> findImageBothDuplicates(images, onProgress)
+        }
+    }
+
+    private suspend fun findImageMD5Duplicates(
+        images: List<Image>,
+        onProgress: (Int, Int, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        val groups = mutableMapOf<String, MutableList >()
+
+        images.forEachIndexed { index, image ->
+            onProgress(index, images.size, image.name)
+            try {
+                val hash = computeImageMD5Hash(image)
+                groups.getOrPut(hash) { mutableListOf() }.add(image)
+            } catch (e: Exception) {
+            }
+        }
+
+        groups.filter { it.value.size > 1 }
+            .map { (hash, videoList) ->
+                DuplicateGroup(
+                    id = "md5_$hash",
+                    videos = videoList.sortedByDescending { it.size },
+                    similarity = 1.0f
+                )
+            }
+    }
+
+    private suspend fun findImagepHashDuplicates(
+        images: List<Image>,
+        onProgress: (Int, Int, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        val groups = mutableMapOf<String, MutableList >()
+
+        images.forEachIndexed { index, image ->
+            onProgress(index, images.size, image.name)
+            try {
+                val hash = computeImagePHash(image)
+                groups.getOrPut(hash) { mutableListOf() }.add(image)
+            } catch (e: Exception) {
+            }
+        }
+
+        groups.filter { it.value.size > 1 }
+            .map { (hash, videoList) ->
+                DuplicateGroup(
+                    id = "phash_$hash",
+                    videos = videoList.sortedByDescending { it.size },
+                    similarity = _pHashThreshold.value
+                )
+            }
+    }
+
+    private suspend fun findImageBothDuplicates(
+        images: List<Image>,
+        onProgress: (Int, Int, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        val md5Groups = findImageMD5Duplicates(images, onProgress).associateBy { it.id }
+        val pHashGroups = findImagepHashDuplicates(images, onProgress).associateBy { it.id }
+
+        val allGroups = (md5Groups.values + pHashGroups.values)
+            .flatMap { it.videos }
+            .groupBy { it.id }
+            .map { (_, videoList) ->
+                val bestSimilarity = if (md5Groups.containsKey("md5_${videoList.firstOrNull()?.id}")) 1.0f else _pHashThreshold.value
+                DuplicateGroup(
+                    id = videoList.first().id.toString(),
+                    videos = videoList.distinctBy { it.id }.sortedByDescending { it.size },
+                    similarity = bestSimilarity
+                )
+            }
+            .filter { it.videos.size > 1 }
+
+        allGroups
+    }
+
+    private fun computeImageMD5Hash(image: Image): String {
         return try {
-            val file = java.io.File(video.path)
-            if (!file.exists()) return video.id.toString()
+            val file = java.io.File(image.path)
+            if (!file.exists()) return image.id.toString()
 
             val digest = MessageDigest.getInstance("MD5")
-            
-            val fileSize = file.length()
-            val sampleSize = minOf(1024 * 1024, fileSize).toInt()
-            val sampleStep = maxOf(1, (fileSize / sampleSize).toInt())
-
-            java.io.RandomAccessFile(file, "r").use { raf ->
-                var bytesRead = 0L
+            java.io.FileInputStream(file).use { fis ->
                 val buffer = ByteArray(8192)
-                
-                while (bytesRead < fileSize && bytesRead < sampleSize * 10) {
-                    raf.seek(bytesRead)
-                    val read = raf.read(buffer)
-                    if (read > 0) {
-                        digest.update(buffer, 0, minOf(read, sampleSize - (bytesRead.toInt())))
-                    }
-                    bytesRead += sampleStep
+                var bytesRead: Int
+                while (fis.read(buffer).also { bytesRead = it } != -1) {
+                    digest.update(buffer, 0, bytesRead)
                 }
             }
-
             digest.digest().joinToString("") { byte -> "%02x".format(byte) }
         } catch (e: Exception) {
-            video.id.toString()
+            image.id.toString()
+        }
+    }
+
+    private fun computeImagePHash(image: Image): String {
+        return try {
+            val file = java.io.File(image.path)
+            if (!file.exists()) return image.id.toString()
+            image.path.hashCode().toString(16)
+        } catch (e: Exception) {
+            image.id.toString()
         }
     }
 
@@ -266,7 +356,7 @@ class VideoViewModel @Inject constructor(
     suspend fun deleteSelectedVideos(): Int {
         var deletedCount = 0
         val videosToDelete = _videos.value.filter { _selectedVideos.value.contains(it.id) }
-        
+
         videosToDelete.forEach { video ->
             val success = repository.deleteVideo(video)
             if (success) {
@@ -274,7 +364,7 @@ class VideoViewModel @Inject constructor(
                 _freedSpace.value += video.size
             }
         }
-        
+
         _selectedVideos.value = emptySet()
         return deletedCount
     }
