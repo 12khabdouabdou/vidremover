@@ -39,7 +39,9 @@ import com.vidremover.presentation.ui.screens.ReviewScreen
 import com.vidremover.presentation.ui.screens.ScanScreen
 import com.vidremover.presentation.ui.screens.SettingsScreen
 import com.vidremover.presentation.ui.theme.VidRemoverTheme
+import dagger.hilt.android.AndroidEntryPoint
 
+@AndroidEntryPoint
 class MainActivity : ComponentActivity() {
 
     private var hasPermission by mutableStateOf(false)
