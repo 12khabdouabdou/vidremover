@@ -8,19 +8,15 @@ import com.vidremover.domain.model.DuplicateGroup
 import com.vidremover.domain.model.ScanProgress
 import com.vidremover.domain.model.Video
 import com.vidremover.domain.model.VideoFolder
+import com.vidremover.domain.usecase.DetectionMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.security.MessageDigest
 
-enum class DetectionMode {
-    MD5_ONLY,
-    PHASH_ONLY,
-    BOTH
-}
+import com.vidremover.domain.usecase.DetectionMode
 
 class VideoViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -134,7 +130,7 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
     private suspend fun findDuplicates(
         videos: List<Video>,
         mode: DetectionMode,
-        onProgress: (Int, String, String) -> Unit
+        onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
         when (mode) {
             DetectionMode.MD5_ONLY -> findMD5Duplicates(videos, onProgress)
@@ -145,7 +141,7 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun findMD5Duplicates(
         videos: List<Video>,
-        onProgress: (Int, String, String) -> Unit
+        onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
         val groups = mutableMapOf<String, MutableList<Video>>()
 
@@ -172,7 +168,7 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun findpHashDuplicates(
         videos: List<Video>,
-        onProgress: (Int, String, String) -> Unit
+        onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
         val groups = mutableMapOf<String, MutableList<Video>>()
 
@@ -199,7 +195,7 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
 
     private suspend fun findBothDuplicates(
         videos: List<Video>,
-        onProgress: (Int, String, String) -> Unit
+        onProgress: (Int, Int, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
         // First find MD5 duplicates
         val md5Groups = findMD5Duplicates(videos, onProgress).associateBy { it.id }

@@ -7,7 +7,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -81,7 +82,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Icon(
-                        imageVector = Icons.Default.Smartphone,
+                        imageVector = Icons.Default.Storage,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
@@ -119,7 +120,7 @@ fun HomeScreen(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Icon(
-                        imageVector = Icons.Default.FolderOpen,
+                        imageVector = Icons.Default.Folder,
                         contentDescription = null,
                         tint = MaterialTheme.colorScheme.primary
                     )
