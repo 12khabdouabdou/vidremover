@@ -51,8 +51,7 @@ class VideoViewModel @Inject constructor(
     private val _scanAll = MutableStateFlow(true)
     val scanAll: StateFlow<Boolean> = _scanAll.asStateFlow()
 
-    private val _detectionMode = MutableStateFlow(DetectionMode.MD5_ONLY)
-    val detectionMode: StateFlow<DetectionMode> = _detectionMode.asStateFlow()
+    val detectionMode: StateFlow<DetectionMode> = duplicateStateHolder.detectionMode
 
     private val _pHashThreshold = MutableStateFlow(0.9f)
     val pHashThreshold: StateFlow<Float> = _pHashThreshold.asStateFlow()
@@ -98,7 +97,7 @@ class VideoViewModel @Inject constructor(
             _videos.value = videoList
             _scanProgress.value = ScanProgress(0, videoList.size, "Starting scan...", false)
 
-            val duplicates = findDuplicates(videoList, _detectionMode.value) { current, total, file ->
+            val duplicates = findDuplicates(videoList, detectionMode.value) { current, total, file ->
                 _scanProgress.value = ScanProgress(current, total, file, false)
             }
 
@@ -106,12 +105,8 @@ class VideoViewModel @Inject constructor(
         duplicateStateHolder.setDuplicateGroups(duplicates)
         _scanProgress.value = ScanProgress(videoList.size, videoList.size, "Complete!", true)
             _isScanning.value = false
-        }
     }
-
-    fun setDetectionMode(mode: com.vidremover.domain.usecase.DetectionMode) {
-        _detectionMode.value = mode
-    }
+}
 
     fun setpHashThreshold(threshold: Float) {
         _pHashThreshold.value = threshold

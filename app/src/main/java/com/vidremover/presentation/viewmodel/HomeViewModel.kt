@@ -20,7 +20,8 @@ import javax.inject.Inject
  */
 @HiltViewModel
 class HomeViewModel @Inject constructor(
-    private val repository: VideoRepository
+    private val repository: VideoRepository,
+    private val duplicateStateHolder: DuplicateStateHolder
 ) : ViewModel() {
 
     private val _folders = MutableStateFlow<List<VideoFolder>>(emptyList())
@@ -116,6 +117,7 @@ class HomeViewModel @Inject constructor(
      */
     fun setDetectionMode(mode: DetectionMode) {
         _detectionMode.value = mode
+        duplicateStateHolder.setDetectionMode(mode)
     }
 
     /**
