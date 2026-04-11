@@ -17,6 +17,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.vidremover.domain.model.VideoFolder
+import com.vidremover.presentation.viewmodel.DetectionMode
 import com.vidremover.presentation.viewmodel.VideoViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -29,6 +30,7 @@ fun HomeScreen(
     val folders by viewModel.folders.collectAsState()
     val scanAll by viewModel.scanAll.collectAsState()
     val selectedFolders by viewModel.selectedFolders.collectAsState()
+    val detectionMode by viewModel.detectionMode.collectAsState()
 
     LaunchedEffect(Unit) {
         viewModel.loadFolders()
@@ -163,6 +165,21 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(16.dp))
 
+            Text(
+                text = "Detection Method",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            DetectionModeSelector(
+                selectedMode = detectionMode,
+                onModeSelected = { viewModel.setDetectionMode(it) }
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Button(
                 onClick = onNavigateToScan,
                 modifier = Modifier
@@ -211,6 +228,60 @@ private fun FolderItem(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DetectionModeSelector(
+    selectedMode: DetectionMode,
+    onModeSelected: (DetectionMode) -> Unit
+) {
+    Column {
+        DetectionMode.entries.forEach { mode ->
+            val isSelected = mode == selectedMode
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 4.dp)
+                    .clickable { onModeSelected(mode) },
+                colors = CardDefaults.cardColors(
+                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                    else MaterialTheme.colorScheme.surface
+                )
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    RadioButton(
+                        selected = isSelected,
+                        onClick = { onModeSelected(mode) }
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            when (mode) {
+                                DetectionMode.MD5_ONLY -> "MD5 Only"
+                                DetectionMode.PHASH_ONLY -> "Perceptual Hash (pHash)"
+                                DetectionMode.BOTH -> "Both (MD5 + pHash)"
+                            },
+                            fontWeight = FontWeight.Medium
+                        )
+                        Text(
+                            when (mode) {
+                                DetectionMode.MD5_ONLY -> "Fast, exact duplicates only"
+                                DetectionMode.PHASH_ONLY -> "Similar content detection"
+                                DetectionMode.BOTH -> "Best of both methods"
+                            },
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }

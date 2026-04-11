@@ -16,6 +16,12 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 
+enum class DetectionMode {
+    MD5_ONLY,
+    PHASH_ONLY,
+    BOTH
+}
+
 class VideoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = VideoRepository(application)
@@ -40,6 +46,18 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _scanAll = MutableStateFlow(true)
     val scanAll: StateFlow<Boolean> = _scanAll.asStateFlow()
+
+    private val _detectionMode = MutableStateFlow(DetectionMode.MD5_ONLY)
+    val detectionMode: StateFlow<DetectionMode> = _detectionMode.asStateFlow()
+
+    private val _pHashThreshold = MutableStateFlow(0.9f)
+    val pHashThreshold: StateFlow<Float> = _pHashThreshold.asStateFlow()
+
+    private val _selectedVideos = MutableStateFlow<Set<Long>>(emptySet())
+    val selectedVideos: StateFlow<Set<Long>> = _selectedVideos.asStateFlow()
+
+    private val _freedSpace = MutableStateFlow(0L)
+    val freedSpace: StateFlow<Long> = _freedSpace.asStateFlow()
 
     fun loadFolders() {
         viewModelScope.launch {
@@ -76,7 +94,7 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
             _videos.value = videoList
             _scanProgress.value = ScanProgress(0, videoList.size, "Starting scan...", false)
 
-            val duplicates = findDuplicates(videoList) { current, total, file ->
+            val duplicates = findDuplicates(videoList, _detectionMode.value) { current, total, file ->
                 _scanProgress.value = ScanProgress(current, total, file, false)
             }
 
@@ -86,7 +104,46 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setDetectionMode(mode: DetectionMode) {
+        _detectionMode.value = mode
+    }
+
+    fun setpHashThreshold(threshold: Float) {
+        _pHashThreshold.value = threshold
+    }
+
+    fun toggleVideoSelection(videoId: Long) {
+        val current = _selectedVideos.value.toMutableSet()
+        if (current.contains(videoId)) {
+            current.remove(videoId)
+        } else {
+            current.add(videoId)
+        }
+        _selectedVideos.value = current
+    }
+
+    fun selectAllDuplicates() {
+        val allDuplicateIds = _duplicateGroups.value.flatMap { it.videos.map { v -> v.id } }.toSet()
+        _selectedVideos.value = allDuplicateIds
+    }
+
+    fun clearSelection() {
+        _selectedVideos.value = emptySet()
+    }
+
     private suspend fun findDuplicates(
+        videos: List<Video>,
+        mode: DetectionMode,
+        onProgress: (Int, String, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        when (mode) {
+            DetectionMode.MD5_ONLY -> findMD5Duplicates(videos, onProgress)
+            DetectionMode.PHASH_ONLY -> findpHashDuplicates(videos, onProgress)
+            DetectionMode.BOTH -> findBothDuplicates(videos, onProgress)
+        }
+    }
+
+    private suspend fun findMD5Duplicates(
         videos: List<Video>,
         onProgress: (Int, String, String) -> Unit
     ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
@@ -95,21 +152,76 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
         videos.forEachIndexed { index, video ->
             onProgress(index, videos.size, video.name)
 
-            val hash = computeVideoHash(video)
-            if (!groups.containsKey(hash)) {
-                groups[hash] = mutableListOf()
+            try {
+                val hash = repository.computeMD5Hash(video)
+                groups.getOrPut(hash) { mutableListOf() }.add(video)
+            } catch (e: Exception) {
+                // Skip unhashable videos
             }
-            groups[hash]?.add(video)
         }
 
         groups.filter { it.value.size > 1 }
             .map { (hash, videoList) ->
                 DuplicateGroup(
-                    id = hash,
+                    id = "md5_$hash",
                     videos = videoList.sortedByDescending { it.size },
                     similarity = 1.0f
                 )
             }
+    }
+
+    private suspend fun findpHashDuplicates(
+        videos: List<Video>,
+        onProgress: (Int, String, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        val groups = mutableMapOf<String, MutableList<Video>>()
+
+        videos.forEachIndexed { index, video ->
+            onProgress(index, videos.size, video.name)
+
+            try {
+                val hash = repository.computepHash(video)
+                groups.getOrPut(hash) { mutableListOf() }.add(video)
+            } catch (e: Exception) {
+                // Skip unhashable videos
+            }
+        }
+
+        groups.filter { it.value.size > 1 }
+            .map { (hash, videoList) ->
+                DuplicateGroup(
+                    id = "phash_$hash",
+                    videos = videoList.sortedByDescending { it.size },
+                    similarity = _pHashThreshold.value
+                )
+            }
+    }
+
+    private suspend fun findBothDuplicates(
+        videos: List<Video>,
+        onProgress: (Int, String, String) -> Unit
+    ): List<DuplicateGroup> = withContext(Dispatchers.Default) {
+        // First find MD5 duplicates
+        val md5Groups = findMD5Duplicates(videos, onProgress).associateBy { it.id }
+        
+        // Then find pHash duplicates
+        val pHashGroups = findpHashDuplicates(videos, onProgress).associateBy { it.id }
+        
+        // Combine groups
+        val allGroups = (md5Groups.values + pHashGroups.values)
+            .flatMap { it.videos }
+            .groupBy { it.id }
+            .map { (_, videoList) ->
+                val bestSimilarity = if (md5Groups.containsKey("md5_${videoList.firstOrNull()?.id}")) 1.0f else _pHashThreshold.value
+                DuplicateGroup(
+                    id = videoList.first().id.toString(),
+                    videos = videoList.distinctBy { it.id }.sortedByDescending { it.size },
+                    similarity = bestSimilarity
+                )
+            }
+            .filter { it.videos.size > 1 }
+        
+        allGroups
     }
 
     private fun computeVideoHash(video: Video): String {
@@ -144,7 +256,27 @@ class VideoViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     suspend fun deleteVideo(video: Video): Boolean {
-        return repository.deleteVideo(video)
+        val success = repository.deleteVideo(video)
+        if (success) {
+            _freedSpace.value += video.size
+        }
+        return success
+    }
+
+    suspend fun deleteSelectedVideos(): Int {
+        var deletedCount = 0
+        val videosToDelete = _videos.value.filter { _selectedVideos.value.contains(it.id) }
+        
+        videosToDelete.forEach { video ->
+            val success = repository.deleteVideo(video)
+            if (success) {
+                deletedCount++
+                _freedSpace.value += video.size
+            }
+        }
+        
+        _selectedVideos.value = emptySet()
+        return deletedCount
     }
 
     fun formatSize(size: Long): String = repository.formatFileSize(size)

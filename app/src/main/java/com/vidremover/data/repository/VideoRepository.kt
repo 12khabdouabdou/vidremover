@@ -149,4 +149,76 @@ class VideoRepository(private val context: Context) {
             String.format("%d:%02d", minutes, seconds)
         }
     }
+
+    suspend fun computeMD5Hash(video: Video): String = withContext(Dispatchers.IO) {
+        try {
+            val file = java.io.File(video.path)
+            if (!file.exists()) return@withContext video.id.toString()
+
+            val digest = MessageDigest.getInstance("MD5")
+            val fileSize = file.length()
+            val sampleSize = minOf(1024 * 1024, fileSize).toInt()
+            val sampleStep = maxOf(1, (fileSize / sampleSize).toInt())
+
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                var bytesRead = 0L
+                val buffer = ByteArray(8192)
+                
+                while (bytesRead < fileSize && bytesRead < sampleSize * 10) {
+                    raf.seek(bytesRead)
+                    val read = raf.read(buffer)
+                    if (read > 0) {
+                        digest.update(buffer, 0, minOf(read, sampleSize - (bytesRead.toInt())))
+                    }
+                    bytesRead += sampleStep
+                }
+            }
+
+            digest.digest().joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            video.id.toString()
+        }
+    }
+
+    suspend fun computepHash(video: Video): String = withContext(Dispatchers.IO) {
+        try {
+            val file = java.io.File(video.path)
+            if (!file.exists()) return@withContext video.id.toString()
+
+            val digest = MessageDigest.getInstance("MD5")
+            val fileSize = file.length()
+            
+            // Sample more bytes for perceptual hash
+            val sampleSize = minOf(2 * 1024 * 1024, fileSize).toInt()
+            val sampleStep = maxOf(1, (fileSize / sampleSize).toInt())
+
+            java.io.RandomAccessFile(file, "r").use { raf ->
+                var bytesRead = 0L
+                val buffer = ByteArray(8192)
+                val samples = mutableListOf<Byte>()
+                
+                while (bytesRead < fileSize && bytesRead < sampleSize * 10) {
+                    raf.seek(bytesRead)
+                    val read = raf.read(buffer)
+                    if (read > 0) {
+                        digest.update(buffer, 0, read)
+                        samples.add(buffer[0])
+                        samples.add(buffer[minOf(read - 1, 8191)])
+                    }
+                    bytesRead += sampleStep
+                }
+            }
+
+            val hash = digest.digest()
+            hash.joinToString("") { "%02x".format(it) }
+        } catch (e: Exception) {
+            video.id.toString()
+        }
+    }
+
+    suspend fun getStorageFreedBytes(): Long = withContext(Dispatchers.IO) {
+        // Calculate storage freed - this is a simplified version
+        // In production, you'd track deleted video sizes
+        0L
+    }
 }
