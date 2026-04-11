@@ -1,7 +1,9 @@
 package com.vidremover.presentation.ui.screens
 
+import android.content.Context
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
+import android.net.Uri
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -17,13 +19,13 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
-import kotlinx.coroutines.launch
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -31,6 +33,7 @@ import androidx.hilt.navigation.compose.hiltViewModel
 import com.vidremover.domain.model.DuplicateGroup
 import com.vidremover.domain.model.Video
 import com.vidremover.presentation.viewmodel.ResultsViewModel
+import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -385,8 +388,11 @@ private fun VideoItem(
     formatDuration: (Long) -> String,
     onToggle: () -> Unit
 ) {
-    val thumbnail = remember(video.uri) {
-        loadThumbnail(video.uri)?.asImageBitmap()
+    val context = LocalContext.current
+    var thumbnail by remember(video.uri) { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(video.uri) {
+        thumbnail = loadThumbnail(context, video.uri)
     }
 
     Card(
@@ -416,13 +422,13 @@ private fun VideoItem(
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
             ) {
-                if (thumbnail != null) {
-                    Image(
-                        bitmap = thumbnail,
-                        contentDescription = null,
-                        modifier = Modifier.fillMaxSize(),
-                        contentScale = ContentScale.Crop
-                    )
+        if (thumbnail != null) {
+            Image(
+                bitmap = thumbnail!!.asImageBitmap(),
+                contentDescription = null,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
                 } else {
                     Icon(
                         imageVector = Icons.Default.VideoLibrary,
@@ -487,11 +493,11 @@ private fun VideoItem(
     }
 }
 
-private fun loadThumbnail(uri: String): Bitmap? {
-    return try {
+private suspend fun loadThumbnail(context: Context, uriString: String): Bitmap? = kotlinx.coroutines.Dispatchers.IO {
+    try {
         val retriever = MediaMetadataRetriever()
-        retriever.setDataSource(uri)
-        val bitmap = retriever.getFrameAtTime(1_000_000) // 1 second in
+        retriever.setDataSource(context, Uri.parse(uriString))
+        val bitmap = retriever.getFrameAtTime(1_000_000)
         retriever.release()
         bitmap
     } catch (e: Exception) {
