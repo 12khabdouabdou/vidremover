@@ -1,6 +1,7 @@
 package com.vidremover.presentation.ui.screens
 
 import android.content.Context
+import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
@@ -364,16 +365,17 @@ private fun DuplicateGroupCard(
                         }
                     }
 
-                    // Video Items
-                    group.videos.forEach { video ->
-                        VideoItem(
-                            video = video,
-                            isSelected = selectedVideoIds.contains(video.id),
-                            formatSize = formatSize,
-                            formatDuration = formatDuration,
-                            onToggle = { onToggleVideoSelection(video.id) }
-                        )
-                    }
+            // Video Items
+            group.videos.forEach { video ->
+                VideoItem(
+                    video = video,
+                    isSelected = selectedVideoIds.contains(video.id),
+                    formatSize = formatSize,
+                    formatDuration = formatDuration,
+                    onToggle = { onToggleVideoSelection(video.id) },
+                    onPlay = { /* Handled inside VideoItem */ }
+                )
+            }
                 }
             }
         }
@@ -386,7 +388,8 @@ private fun VideoItem(
     isSelected: Boolean,
     formatSize: (Long) -> String,
     formatDuration: (Long) -> String,
-    onToggle: () -> Unit
+    onToggle: () -> Unit,
+    onPlay: () -> Unit = {}
 ) {
     val context = LocalContext.current
     var thumbnail by remember(video.uri) { mutableStateOf<Bitmap?>(null) }
@@ -398,8 +401,7 @@ private fun VideoItem(
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 4.dp)
-            .clickable { onToggle() },
+            .padding(horizontal = 16.dp, vertical = 4.dp),
         colors = CardDefaults.cardColors(
             containerColor = if (isSelected) MaterialTheme.colorScheme.errorContainer
             else MaterialTheme.colorScheme.surface
@@ -421,14 +423,21 @@ private fun VideoItem(
                     .size(80.dp, 60.dp)
                     .clip(RoundedCornerShape(8.dp))
                     .background(MaterialTheme.colorScheme.surfaceVariant)
+                    .clickable {
+                        val intent = Intent(Intent.ACTION_VIEW).apply {
+                            setDataAndType(Uri.parse(video.uri), "video/*")
+                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        }
+                        context.startActivity(Intent.createChooser(intent, "Play video"))
+                    }
             ) {
-        if (thumbnail != null) {
-            Image(
-                bitmap = thumbnail!!.asImageBitmap(),
-                contentDescription = null,
-                modifier = Modifier.fillMaxSize(),
-                contentScale = ContentScale.Crop
-            )
+                if (thumbnail != null) {
+                    Image(
+                        bitmap = thumbnail!!.asImageBitmap(),
+                        contentDescription = "Play video",
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop
+                    )
                 } else {
                     Icon(
                         imageVector = Icons.Default.VideoLibrary,
@@ -439,6 +448,15 @@ private fun VideoItem(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                Icon(
+                    imageVector = Icons.Default.PlayArrow,
+                    contentDescription = "Play",
+                    modifier = Modifier
+                        .size(32.dp)
+                        .align(Alignment.Center),
+                    tint = Color.White
+                )
 
                 Box(
                     modifier = Modifier
@@ -459,7 +477,11 @@ private fun VideoItem(
 
             Spacer(modifier = Modifier.width(12.dp))
 
-            Column(modifier = Modifier.weight(1f)) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .clickable { onToggle() }
+            ) {
                 Text(
                     text = video.name,
                     style = MaterialTheme.typography.bodyMedium,
