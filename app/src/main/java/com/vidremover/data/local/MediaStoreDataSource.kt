@@ -1,11 +1,14 @@
 package com.vidremover.data.local
 
+import android.app.Activity
 import android.content.ContentResolver
 import android.content.ContentUris
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
 import android.os.Build
 import android.provider.MediaStore
+import androidx.activity.result.ActivityResultLauncher
 import com.vidremover.data.model.VideoDto
 import com.vidremover.data.model.VideoFolderDto
 import dagger.hilt.android.qualifiers.ApplicationContext
@@ -14,24 +17,25 @@ import kotlinx.coroutines.withContext
 import javax.inject.Inject
 import javax.inject.Singleton
 
-/**
-* Data source for querying video metadata from MediaStore.
-* Handles all MediaStore interactions and returns DTOs.
-*
-* @param context Application context for accessing ContentResolver
-*/
 @Singleton
 class MediaStoreDataSource @Inject constructor(
     @ApplicationContext private val context: Context
 ) {
-
     private val contentResolver: ContentResolver = context.contentResolver
 
-    /**
-     * Queries all videos from MediaStore.
-     * Handles Android version differences (Q+ vs legacy).
-     * @return List of VideoDto sorted by date added (newest first)
-     */
+    private var deleteRequestLauncher: ActivityResultLauncher<Intent>? = null
+    private var pendingDeleteCallback: ((Boolean) -> Unit)? = null
+
+    fun setDeleteRequestLauncher(launcher: ActivityResultLauncher<Intent>) {
+        deleteRequestLauncher = launcher
+    }
+
+    fun onDeleteResult(resultCode: Int) {
+        val success = resultCode == Activity.RESULT_OK
+        pendingDeleteCallback?.invoke(success)
+        pendingDeleteCallback = null
+    }
+
     suspend fun queryVideos(): List<VideoDto> = withContext(Dispatchers.IO) {
         val videos = mutableListOf<VideoDto>()
 
@@ -152,16 +156,24 @@ class MediaStoreDataSource @Inject constructor(
      */
     suspend fun deleteVideo(uri: Uri): Boolean = withContext(Dispatchers.IO) {
         try {
-            contentResolver.delete(uri, null, null) > 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                contentResolver.delete(uri, null, null) > 0
+            } else {
+                contentResolver.delete(uri, null, null) > 0
+            }
         } catch (e: Exception) {
             false
         }
     }
 
-    /**
-     * Checks if the app has permission to read media.
-     * @return true if permission is granted
-     */
+    fun createDeleteRequestIntent(uris: List<Uri>): Intent? {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            MediaStore.createDeleteRequest(context, uris)
+        } else {
+            null
+        }
+    }
+
     fun hasReadMediaPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             context.checkSelfPermission(android.Manifest.permission.READ_MEDIA_VIDEO) ==

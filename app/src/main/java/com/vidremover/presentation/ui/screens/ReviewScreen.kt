@@ -1,10 +1,15 @@
 package com.vidremover.presentation.ui.screens
 
+import android.app.Activity
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.media.MediaMetadataRetriever
 import android.net.Uri
+import android.os.Build
+import android.provider.MediaStore
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -42,6 +47,7 @@ fun ReviewScreen(
     onNavigateBack: () -> Unit,
     viewModel: ResultsViewModel = hiltViewModel()
 ) {
+    val context = LocalContext.current
     val duplicateGroups by viewModel.duplicateGroups.collectAsState()
     val selectedVideoIds by viewModel.selectedVideoIds.collectAsState()
     val expandedGroups by viewModel.expandedGroups.collectAsState()
@@ -52,10 +58,21 @@ fun ReviewScreen(
 
     var showDeleteDialog by remember { mutableStateOf(false) }
     var showClearDialog by remember { mutableStateOf(false) }
+    var pendingDeleteVideos by remember { mutableStateOf<List<Video>>(emptyList()) }
 
     val scope = rememberCoroutineScope()
 
-    // Calculate selected size for display
+    val deleteLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK) {
+            scope.launch {
+                viewModel.deleteSelectedVideos()
+            }
+        }
+        pendingDeleteVideos = emptyList()
+    }
+
     val selectedSize by remember(selectedVideoIds, duplicateGroups) {
         mutableStateOf(viewModel.calculateSelectedSize())
     }
@@ -194,21 +211,32 @@ fun ReviewScreen(
                         )
                     }
                 },
-                confirmButton = {
-                    Button(
-                        onClick = {
-                            showDeleteDialog = false
-                            scope.launch {
-                                viewModel.deleteSelectedVideos()
-                            }
-                        },
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = MaterialTheme.colorScheme.error
-                        )
-                    ) {
-                        Text("Delete")
+        confirmButton = {
+            Button(
+                onClick = {
+                    showDeleteDialog = false
+                    val videosToDelete = duplicateGroups
+                        .flatMap { it.videos }
+                        .filter { selectedVideoIds.contains(it.id) }
+                    
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                        val uris = videosToDelete.map { Uri.parse(it.uri) }
+                        val intent = MediaStore.createDeleteRequest(context.contentResolver, uris)
+                        pendingDeleteVideos = videosToDelete
+                        deleteLauncher.launch(intent)
+                    } else {
+                        scope.launch {
+                            viewModel.deleteSelectedVideos()
+                        }
                     }
                 },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error
+                )
+            ) {
+                Text("Delete")
+            }
+        },
                 dismissButton = {
                     TextButton(onClick = { showDeleteDialog = false }) {
                         Text("Cancel")
