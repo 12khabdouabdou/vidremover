@@ -26,7 +26,8 @@ class VideoViewModel @Inject constructor(
     private val repository: VideoRepository,
     private val detectDuplicatesUseCase: DetectDuplicatesUseCase,
     private val computeMD5HashUseCase: ComputeMD5HashUseCase,
-    private val computePHashUseCase: ComputePHashUseCase
+    private val computePHashUseCase: ComputePHashUseCase,
+    private val duplicateStateHolder: DuplicateStateHolder
 ) : ViewModel() {
 
     private val _videos = MutableStateFlow<List<Video>>(emptyList())
@@ -101,8 +102,9 @@ class VideoViewModel @Inject constructor(
                 _scanProgress.value = ScanProgress(current, total, file, false)
             }
 
-            _duplicateGroups.value = duplicates
-            _scanProgress.value = ScanProgress(videoList.size, videoList.size, "Complete!", true)
+        _duplicateGroups.value = duplicates
+        duplicateStateHolder.setDuplicateGroups(duplicates)
+        _scanProgress.value = ScanProgress(videoList.size, videoList.size, "Complete!", true)
             _isScanning.value = false
         }
     }
